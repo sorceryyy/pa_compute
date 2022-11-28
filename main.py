@@ -145,7 +145,7 @@ def para_merge_sort(data_in:np.ndarray)->np.ndarray:
 
 
 
-    # 配置計算資源，編譯 OpenCL 程式
+    # create context, queue, program
     plat = cl.get_platforms()
     devices = plat[0].get_devices()
     ctx = cl.Context([devices[0]])
@@ -155,7 +155,7 @@ def para_merge_sort(data_in:np.ndarray)->np.ndarray:
 
     # 資料轉換成 numpy 形式以利轉換為 OpenCL Buffer
     data_np = np.int64(data_in)
-    buff_np = np.empty_like(data_np)
+    buff_np = np.empty_like(data_np).astype(np.int64)
 
     # 建立緩衝區，並且複製數值到緩衝區
     data = cl.Buffer(ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=data_np)
@@ -184,6 +184,90 @@ def para_merge_sort(data_in:np.ndarray)->np.ndarray:
     buff.release()
     return data_np
 
+
+def para_quick_sort(data_in:np.ndarray)->np.ndarray:
+    '''need synchronize? hard!'''
+    CL_CODE = '''
+        __kernel void sort_tree(global long* data, global int* father, global int* l_child, global int* r_child, global bool* exited) {
+            //get id
+            const int gid = get_glob
+        } 
+    
+    
+    
+    
+    '''
+    
+
+    # create context, queue, program
+    plat = cl.get_platforms()
+    devices = plat[0].get_devices()
+    ctx = cl.Context([devices[0]])
+    prg = cl.Program(ctx, CL_CODE).build()
+    queue = cl.CommandQueue(ctx)
+    mf = cl.mem_flags
+
+@timing
+def para_enum_sort(data_in:np.ndarray)->np.ndarray:
+    '''parallel enum sort'''
+    CL_CODE = '''
+    kernel void enumerate(int size, global long* data, global long* buffer) {
+        // get group id,when single thread per group
+        //const int gid = get_global_id(0);
+
+        // get id when multiple threads in multiple group
+        int num_wrk_items  = get_local_size(0);                 
+        int local_id = get_local_id(0);                   
+        int group_id = get_group_id(0);
+        const int gid = (group_id * num_wrk_items + local_id); 
+
+        int index = 0;
+        for(int i=0; i<size; i++) {
+            if(data[i] < data[gid]) {
+                index ++;
+            }
+            else if(data[i] == data[gid] && i < gid) {
+                index ++;
+            }
+        }
+        buffer[index] = data[gid];
+    }
+    '''
+
+    # create context, queue, program
+    plat = cl.get_platforms()
+    devices = plat[0].get_devices()
+    ctx = cl.Context([devices[0]])
+    prg = cl.Program(ctx, CL_CODE).build()
+    queue = cl.CommandQueue(ctx)
+    mf = cl.mem_flags
+
+    # change data to np.int64, create OpenCL Buffer
+    data_np = np.int64(data_in)
+    buff_np = np.empty_like(data_np).astype(np.int64)
+
+    #create buffer in device
+    data = cl.Buffer(ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=data_np)
+    buff = cl.Buffer(ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=buff_np)
+
+    # figure originate state
+    data_len = np.int32(len(data_np))
+
+    # prg.enumerate(queue, (len(data_np),), (1,), data_len, data, buff)
+
+    work_group_size = 128
+    global_size = ((len(data_np)),) #not sure but seems to be all
+    local_size = ((work_group_size),)
+    prg.enumerate(queue, global_size, local_size, data_len, data, buff)
+
+    #copy buff from device to host
+    cl.enqueue_copy(queue, data_np, buff)
+
+    queue.finish()
+    data.release()
+    buff.release()
+    return data_np
+
 def test(func,test_num:int):
     '''test im i correct'''
     a = [random.randint(1,20) for i in range(test_num)]
@@ -205,19 +289,35 @@ def run_sort(in_file:str,out_file:str,func):
     save_data(out_file,ans_data)
     check_txt(out_file)
 
+def generate_num(file:str, num_range:int, num:int):
+    '''generate a new test data and store'''
+    ans_array = []
+    for i in range(num):
+        ans_array.append(random.randint(-1*num_range,num_range))
+    save_data(file,np.array(ans_array))
+    return file
+
 # read_data("random.txt") #?怎么读出来有30001个数据（是我写错了55）
 
 if __name__ == "__main__":
 
-    run_sort("random.txt","order1.txt",quick_sort)
-    run_sort("random.txt","order2.txt",merge_sort)
-    # run_sort("random.txt","order3.txt",enum_sort)
-    run_sort("random.txt","order4.txt",para_merge_sort)
+    name=generate_num("random_50000_300000.txt",50000,300000)
+    # run_sort(name,"orderx.txt",quick_sort)
+    # run_sort(name,"orderx.txt",merge_sort)
+    # run_sort(name,"orderx.txt",para_merge_sort)
+    run_sort(name,"orderx.txt",para_enum_sort)
     print(timing)
     
+    # run_sort("random.txt","order1.txt",quick_sort)
+    # run_sort("random.txt","order2.txt",merge_sort)
+    # run_sort("random.txt","order3.txt",enum_sort)
+    # run_sort("random.txt","order4.txt",para_merge_sort)
+    # run_sort("random.txt","order5.txt",para_enum_sort)
+    # print(timing)
 
     # n = random.randint(5, 10)
     # data = []
     # for i in range(n):
     #     data.append(random.randint(1, 99))
-    # para_merge_sort(data)
+    # ans = para_enum_sort(data)
+    # print(ans)
