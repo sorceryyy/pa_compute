@@ -1,1 +1,2 @@
-opencl
+pyopencl
+numpy

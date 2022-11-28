@@ -143,8 +143,10 @@ def para_merge_sort(data_in:np.ndarray)->np.ndarray:
     }
     '''
 
+
+
     # 配置計算資源，編譯 OpenCL 程式
-    ctx = cl.Context(dev_type=cl.device_type.GPU)
+    ctx = cl.create_some_context()
     prg = cl.Program(ctx, CL_CODE).build()
     queue = cl.CommandQueue(ctx)
     mf = cl.mem_flags
