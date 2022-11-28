@@ -146,7 +146,9 @@ def para_merge_sort(data_in:np.ndarray)->np.ndarray:
 
 
     # 配置計算資源，編譯 OpenCL 程式
-    ctx = cl.create_some_context()
+    plat = cl.get_platforms()
+    devices = plat[0].get_devices()
+    ctx = cl.Context([devices[0]])
     prg = cl.Program(ctx, CL_CODE).build()
     queue = cl.CommandQueue(ctx)
     mf = cl.mem_flags
