@@ -269,9 +269,9 @@ def partition(data:np.ndarray,pivot):
     assert data is not None
     assert pivot is not None
 
-    l_data = np.ndarray([i for i in data if i<pivot])
-    m_data = np.ndarray([i for i in data if i== pivot])
-    r_data = np.ndarray([i for i in data if i> pivot])
+    l_data = data[data<pivot].copy()
+    m_data = data[data==pivot].copy()
+    r_data = data[data>pivot].copy()
 
     return l_data,m_data,r_data
 
@@ -323,12 +323,12 @@ def parallel_quicksort(data:np.ndarray, n_socket, proc_count, MAX_PROCESSES_COUN
         n_socket.send(data)
         n_socket.close()
 
+@timing
 def para_quick_sort(data_in:np.ndarray)->np.ndarray:
     '''use threads to quick sort the data'''
-    data = list(data_in)
     recv_socket, send_socket = multiprocessing.Pipe(duplex=False)
     parent_process = multiprocessing.Process(target=parallel_quicksort,  \
-                                                            args=(data,  \
+                                                            args=(data_in,  \
                                                                   send_socket, \
                                                                   1,  \
                                                                   multiprocessing.cpu_count()))
@@ -442,11 +442,12 @@ if __name__ == "__main__":
     # run_sort("random.txt","order3.txt",enum_sort)
     # run_sort("random.txt","order4.txt",para_merge_sort)
     # run_sort("random.txt","order5.txt",para_enum_sort)
-    # print(timing)
+    run_sort("random.txt","order6.txt",para_quick_sort)
+    print(timing)
 
-    n = random.randint(5, 10)
-    data = []
-    for i in range(n):
-        data.append(random.randint(1, 99))
-    ans = para_quick_sort(data)
-    print(ans)
+    # n = random.randint(5, 10)
+    # data = []
+    # for i in range(n):
+    #     data.append(random.randint(1, 99))
+    # ans = para_quick_sort(np.array(data))
+    # print(ans)
