@@ -184,21 +184,71 @@ def para_merge_sort(data_in:np.ndarray)->np.ndarray:
     buff.release()
     return data_np
 
-
 def para_quick_sort(data_in:np.ndarray)->np.ndarray:
     '''need synchronize? hard!'''
     CL_CODE = '''
-        __kernel void sort_tree(global long* data, global int* father, global int* l_child, global int* r_child, global bool* exited) {
+        __kernel void sort_tree(global long* data, global int* f, 
+        global int* l_child, global int* r_child, global bool* existed) {
             //get id
-            const int gid = get_glob
-        } 
-    
-    
-    
-    
-    '''
-    
+            const int gid = get_global_id(0)
 
+            if(existed[gid]) return;
+
+            bool is_left = false;
+            if(data[gid]<data[f[gid]] || (data[gid]==data[f[gid]] && gid<f[gid])) {
+                l_child[f[gid]] = gid;
+                is_left = true;
+            }
+            else {
+                r_child[f[gid]] = gid;
+                is_left = false;
+            }
+            barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);
+
+            if(is_left) {
+                if(l_child[f[gid]] == gid) {
+                    existed[gid] = true;
+                }
+                else {
+                    f[gid] = l_child[f[gid]];
+                }
+            }
+            else {
+                if(r_child[f[gid]] == gid) {
+                    existed[gid] = true;
+                }
+                else {
+                    f[gid] = r_child[f[gid]];
+                }
+            }
+        } 
+    '''
+
+    # change data to np.int64, create OpenCL Buffer
+    data_np = np.int64(data_in)
+    buff_np = np.empty_like(data_np).astype(np.int64)
+
+    #create buffer in device
+    data = cl.Buffer(ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=data_np)
+    buff = cl.Buffer(ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=buff_np)
+
+    # figure originate state
+    data_len = np.int32(len(data_np))
+
+    # prg.enumerate(queue, (len(data_np),), (1,), data_len, data, buff)
+
+    work_group_size = 128
+    global_size = ((len(data_np)),) #not sure but seems to be all
+    local_size = ((work_group_size),)
+    prg.enumerate(queue, global_size, local_size, data_len, data, buff)
+
+    #copy buff from device to host
+    cl.enqueue_copy(queue, data_np, buff)
+
+    queue.finish()
+    data.release()
+    buff.release()
+    return data_np
     # create context, queue, program
     plat = cl.get_platforms()
     devices = plat[0].get_devices()
@@ -297,7 +347,6 @@ def generate_num(file:str, num_range:int, num:int):
     save_data(file,np.array(ans_array))
     return file
 
-# read_data("random.txt") #?怎么读出来有30001个数据（是我写错了55）
 
 if __name__ == "__main__":
 
