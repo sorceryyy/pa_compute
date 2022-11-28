@@ -12,6 +12,7 @@
     quick sort 问题：放在gpu上不同的责任范围要确定
     换了种写法，那个PRAM-CRCW各个pocessor之间有非常强的依赖性，我个人认为有些是需要同步的。但是不同grid之间理论上不希望有依赖性，所有只能把grid设为1，thread设为size。我在思考这样和thread谁快
     barrier in branch? what will happen? it will hang kernel and crash
+    书上的办法不好，太多需要atomic的部分了,可以讲讲我做的尝试：试图还原但是有很大的问题
 
 4.实现enum并行排序的时候
     还是来一个buffer，不要直接在data上面改，太危险了

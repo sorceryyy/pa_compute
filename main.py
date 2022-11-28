@@ -1,8 +1,11 @@
 import random
+import multiprocessing
 import io
 import numpy as np
 import pyopencl as cl
 from timing import Timing   #import Timing to calculate time
+# Personal implementation of serial partitioning and quicksort
+
 
 timing = Timing()
 
@@ -55,7 +58,7 @@ def merge(data:np.ndarray)->np.ndarray:
 def merge_sort(data:np.ndarray)->np.ndarray:
     return merge(data)
 
-def quick(data:np.ndarray, left:int, right:int)->None:
+def quick(data:np.ndarray, left:int, right:int)->np.ndarray:
     '''sort data[left:right],inplace'''
     if  right <= left+1:
         return
@@ -78,6 +81,7 @@ def quick(data:np.ndarray, left:int, right:int)->None:
             bigger -= 1
     quick(data,left,equal)
     quick(data,bigger,right)
+    return data
 
 @timing
 def quick_sort(data:np.ndarray)->np.ndarray:
@@ -144,7 +148,6 @@ def para_merge_sort(data_in:np.ndarray)->np.ndarray:
     '''
 
 
-
     # create context, queue, program
     plat = cl.get_platforms()
     devices = plat[0].get_devices()
@@ -184,7 +187,7 @@ def para_merge_sort(data_in:np.ndarray)->np.ndarray:
     buff.release()
     return data_np
 
-def para_quick_sort(data_in:np.ndarray)->np.ndarray:
+def bad_para_quick_sort(data_in:np.ndarray)->np.ndarray:
     '''need synchronize? hard!'''
     CL_CODE = '''
         __kernel void sort_tree(global long* data, global int* f, 
@@ -224,23 +227,33 @@ def para_quick_sort(data_in:np.ndarray)->np.ndarray:
         } 
     '''
 
+    # create context, queue, program
+    plat = cl.get_platforms()
+    devices = plat[0].get_devices()
+    ctx = cl.Context([devices[0]])
+    prg = cl.Program(ctx, CL_CODE).build()
+    queue = cl.CommandQueue(ctx)
+    mf = cl.mem_flags
+
     # change data to np.int64, create OpenCL Buffer
     data_np = np.int64(data_in)
-    buff_np = np.empty_like(data_np).astype(np.int64)
+    father_np = np.empty_like(data_np,dtype=np.int32)
+    l_child_np = np.full_like(data_np,len(data_in),dtype=np.int32)
+    r_child_np = np.full_like(data_np,len(data_in),dtype=np.int32)
+    existed_np = np.empty_like(data_np,dtype=np.bool_)
 
     #create buffer in device
     data = cl.Buffer(ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=data_np)
-    buff = cl.Buffer(ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=buff_np)
+    father = cl.Buffer(ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=father_np)
+    l_child = cl.Buffer(ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=l_child_np)
+    r_child = cl.Buffer(ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=r_child_np)
+    existed = cl.Buffer(ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=existed_np)
 
     # figure originate state
     data_len = np.int32(len(data_np))
 
-    # prg.enumerate(queue, (len(data_np),), (1,), data_len, data, buff)
-
-    work_group_size = 128
     global_size = ((len(data_np)),) #not sure but seems to be all
-    local_size = ((work_group_size),)
-    prg.enumerate(queue, global_size, local_size, data_len, data, buff)
+    prg.enumerate(queue, global_size, global_size, data_len, data, father,l_child,r_child,existed)
 
     #copy buff from device to host
     cl.enqueue_copy(queue, data_np, buff)
@@ -249,13 +262,80 @@ def para_quick_sort(data_in:np.ndarray)->np.ndarray:
     data.release()
     buff.release()
     return data_np
-    # create context, queue, program
-    plat = cl.get_platforms()
-    devices = plat[0].get_devices()
-    ctx = cl.Context([devices[0]])
-    prg = cl.Program(ctx, CL_CODE).build()
-    queue = cl.CommandQueue(ctx)
-    mf = cl.mem_flags
+
+def partition(data:np.ndarray,pivot):
+    '''a partition of original list'''
+    # Assert that no parameter can be "None"
+    assert data is not None
+    assert pivot is not None
+
+    l_data = np.ndarray([i for i in data if i<pivot])
+    m_data = np.ndarray([i for i in data if i== pivot])
+    r_data = np.ndarray([i for i in data if i> pivot])
+
+    return l_data,m_data,r_data
+
+
+def parallel_quicksort(data:np.ndarray, n_socket, proc_count, MAX_PROCESSES_COUNT):
+    '''parallel quicksort the data, left will be no larger than,right will be larger than'''                                               
+    # use assert to make sure no parameter can be "None"
+    assert data is not None
+    assert n_socket is not None
+    assert proc_count is not None
+    assert MAX_PROCESSES_COUNT is not None
+
+    if (len(data) > 0):
+        if (proc_count >= MAX_PROCESSES_COUNT):
+            quick(data,0,len(data))
+            n_socket.send(data)
+            n_socket.close()
+        else:
+            pivot = data[random.randint(0,len(data)-1)]
+            l_data,m_data,r_data = partition(data, pivot)
+            recv_left_proc, send_left_proc = multiprocessing.Pipe(duplex=False)
+            recv_right_proc, send_right_proc = multiprocessing.Pipe(duplex=False)
+            new_proc_count = 2 * proc_count + 1
+            left_proc = multiprocessing.Process(target=parallel_quicksort,  \
+                                                            args=(l_data,  \
+                                                                  send_left_proc,  \
+                                                                  new_proc_count,  \
+                                                                  MAX_PROCESSES_COUNT))
+            right_proc = multiprocessing.Process(target=parallel_quicksort,  \
+                                                            args=(r_data,  \
+                                                                  send_right_proc,  \
+                                                                  new_proc_count,  \
+                                                                  MAX_PROCESSES_COUNT))
+            left_proc.start()
+            right_proc.start()
+
+            l_data = recv_left_proc.recv()
+            r_data = recv_right_proc.recv()
+
+            data = np.concatenate((l_data,m_data,r_data))
+
+            n_socket.send(data)
+            n_socket.close()
+            left_proc.join()
+            right_proc.join()
+            left_proc.close()
+            right_proc.close()
+    else:
+        n_socket.send(data)
+        n_socket.close()
+
+def para_quick_sort(data_in:np.ndarray)->np.ndarray:
+    '''use threads to quick sort the data'''
+    data = list(data_in)
+    recv_socket, send_socket = multiprocessing.Pipe(duplex=False)
+    parent_process = multiprocessing.Process(target=parallel_quicksort,  \
+                                                            args=(data,  \
+                                                                  send_socket, \
+                                                                  1,  \
+                                                                  multiprocessing.cpu_count()))
+    parent_process.start()
+    ans = recv_socket.recv()
+    parent_process.join()
+    return np.array(ans)
 
 @timing
 def para_enum_sort(data_in:np.ndarray)->np.ndarray:
@@ -350,12 +430,12 @@ def generate_num(file:str, num_range:int, num:int):
 
 if __name__ == "__main__":
 
-    name=generate_num("random_50000_300000.txt",50000,300000)
+    # name=generate_num("random_50000_300000.txt",50000,300000)
     # run_sort(name,"orderx.txt",quick_sort)
     # run_sort(name,"orderx.txt",merge_sort)
     # run_sort(name,"orderx.txt",para_merge_sort)
-    run_sort(name,"orderx.txt",para_enum_sort)
-    print(timing)
+    # run_sort(name,"orderx.txt",para_enum_sort)
+    # print(timing)
     
     # run_sort("random.txt","order1.txt",quick_sort)
     # run_sort("random.txt","order2.txt",merge_sort)
@@ -364,9 +444,9 @@ if __name__ == "__main__":
     # run_sort("random.txt","order5.txt",para_enum_sort)
     # print(timing)
 
-    # n = random.randint(5, 10)
-    # data = []
-    # for i in range(n):
-    #     data.append(random.randint(1, 99))
-    # ans = para_enum_sort(data)
-    # print(ans)
+    n = random.randint(5, 10)
+    data = []
+    for i in range(n):
+        data.append(random.randint(1, 99))
+    ans = para_quick_sort(data)
+    print(ans)
