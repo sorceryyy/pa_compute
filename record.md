@@ -23,3 +23,5 @@ https://jorudolph.wordpress.com/2012/02/03/opencl-work-item-ids-globalgrouplocal
 
 about barrier in cl:
 https://stackoverflow.com/questions/6890302/barriers-in-opencl
+
+5.很有趣的一件事情是：多次执行相同任务，用opencl编程的会快非常非常多，特别有意思。

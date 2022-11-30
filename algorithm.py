@@ -5,6 +5,20 @@ import numpy as np
 import pyopencl as cl
 from timing import Timing   #import Timing to calculate time
 
+def read_data(file_name:str)->np.ndarray:
+    '''input file_name,return a ndarray of data in file'''
+    with open(file_name,"r") as f:
+        tmp = [i.rstrip().split(" ") for i in f.readlines()]
+        ans = np.array([eval(i) for item in tmp for i in item])
+        print(len(ans))
+    return ans
+
+def save_data(file_name:str,data:np.ndarray):
+    '''input file_name and data, store data in file with " " split'''
+    with open(file_name,"w") as f:
+        str_data = [str(i) for i in data] 
+        tmp_str=" ".join(str_data)
+        f.write(tmp_str)
 
 def merge(data:np.ndarray)->np.ndarray:
     '''serially merge sort data'''
@@ -72,7 +86,7 @@ def quick_sort(data:np.ndarray)->np.ndarray:
 def enum_sort(data:np.ndarray)->np.ndarray:
     '''serial enum sort,注这里似乎用了浮点数，希望不影响'''
     #注：对于相同的元素，定义index小的将排在前面（这样可以完全有序）
-    ans = np.zeros(len(data))
+    ans = np.zeros(len(data),dtype=np.int64)
     for i in range(len(data)):
         tmp_data = data[i]
         index = 0
@@ -83,7 +97,6 @@ def enum_sort(data:np.ndarray)->np.ndarray:
                 index +=1
         ans[index] = tmp_data
     return ans
-
 
 def para_merge_sort(data_in:np.ndarray)->np.ndarray:
     '''parallel compute merge sort'''
@@ -254,7 +267,6 @@ def partition(data:np.ndarray,pivot):
 
     return l_data,m_data,r_data
 
-
 def parallel_quicksort(data:np.ndarray, n_socket, proc_count, MAX_PROCESSES_COUNT):
     '''parallel quicksort the data, left will be no larger than,right will be larger than'''                                               
     # use assert to make sure no parameter can be "None"
@@ -362,7 +374,7 @@ def para_enum_sort(data_in:np.ndarray)->np.ndarray:
 
     # prg.enumerate(queue, (len(data_np),), (1,), data_len, data, buff)
 
-    work_group_size = 128
+    work_group_size = 64
     global_size = ((len(data_np)),) #not sure but seems to be all
     local_size = ((work_group_size),)
     prg.enumerate(queue, global_size, local_size, data_len, data, buff)
