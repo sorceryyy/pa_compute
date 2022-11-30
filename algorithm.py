@@ -5,20 +5,6 @@ import numpy as np
 import pyopencl as cl
 from timing import Timing   #import Timing to calculate time
 
-def read_data(file_name:str)->np.ndarray:
-    '''input file_name,return a ndarray of data in file'''
-    with open(file_name,"r") as f:
-        tmp = [i.rstrip().split(" ") for i in f.readlines()]
-        ans = np.array([eval(i) for item in tmp for i in item])
-        print(len(ans))
-    return ans
-
-def save_data(file_name:str,data:np.ndarray):
-    '''input file_name and data, store data in file with " " split'''
-    with open(file_name,"w") as f:
-        str_data = [str(i) for i in data] 
-        tmp_str=" ".join(str_data)
-        f.write(tmp_str)
 
 def merge(data:np.ndarray)->np.ndarray:
     '''serially merge sort data'''
@@ -329,7 +315,6 @@ def para_quick_sort(data_in:np.ndarray)->np.ndarray:
     parent_process.join()
     return np.array(ans)
 
-@timing
 def para_enum_sort(data_in:np.ndarray)->np.ndarray:
     '''parallel enum sort'''
     CL_CODE = '''

@@ -6,6 +6,20 @@ import pyopencl as cl
 from timing import Timing   #import Timing to calculate time
 from algorithm import enum_sort,merge_sort,quick_sort,para_enum_sort,para_merge_sort,para_quick_sort
 
+def read_data(file_name:str)->np.ndarray:
+    '''input file_name,return a ndarray of data in file'''
+    with open(file_name,"r") as f:
+        tmp = [i.rstrip().split(" ") for i in f.readlines()]
+        ans = np.array([eval(i) for item in tmp for i in item])
+        print(len(ans))
+    return ans
+
+def save_data(file_name:str,data:np.ndarray):
+    '''input file_name and data, store data in file with " " split'''
+    with open(file_name,"w") as f:
+        str_data = [str(i) for i in data] 
+        tmp_str=" ".join(str_data)
+        f.write(tmp_str)
 
 def test(func,test_num:int):
     '''test im i correct'''
